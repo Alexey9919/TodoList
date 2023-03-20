@@ -3,6 +3,7 @@ package com.example.todolist;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.lifecycle.Observer;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -10,6 +11,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -17,6 +20,7 @@ import android.widget.TextView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 public class MainActivity extends AppCompatActivity {
@@ -26,12 +30,16 @@ public class MainActivity extends AppCompatActivity {
     private  NotesAdapter notesAdapter;
 
     private RecyclerView recyclerViewNotes;
-    private Database database = Database.getInstance();
+
+    private NoteDatabase noteDatabase;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        noteDatabase = NoteDatabase.getInstance(getApplication());
         initViews();
 
         notesAdapter = new NotesAdapter();
@@ -43,9 +51,23 @@ public class MainActivity extends AppCompatActivity {
 
         recyclerViewNotes.setAdapter(notesAdapter);
 
-        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.RIGHT | ItemTouchHelper.LEFT) {
+        noteDatabase.notesDao().getNotes().observe(this, new Observer<List<Note>>() {
             @Override
-            public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
+            public void onChanged(List<Note> notes) {
+                notesAdapter.setNotes(notes);
+            }
+        });
+
+        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(
+                0,
+                ItemTouchHelper.RIGHT | ItemTouchHelper.LEFT
+        ) {
+            @Override
+            public boolean onMove(
+                    @NonNull RecyclerView recyclerView,
+                    @NonNull RecyclerView.ViewHolder viewHolder,
+                    @NonNull RecyclerView.ViewHolder target
+            ) {
                 return false;
             }
 
@@ -53,8 +75,15 @@ public class MainActivity extends AppCompatActivity {
             public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
                 int position = viewHolder.getAdapterPosition();
                 Note note = notesAdapter.getNotes().get(position);
-                database.remove(note.getId());
-                showNotes();
+
+                Thread thread = new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        noteDatabase.notesDao().remove(note.getId());
+                    }
+                });
+
+                thread.start();
             }
         });
         itemTouchHelper.attachToRecyclerView(recyclerViewNotes);
@@ -69,18 +98,11 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        showNotes();
-    }
 
     private void initViews(){
        recyclerViewNotes = findViewById(R.id.recyclerViewNotes);
        buttonAddNote = findViewById(R.id.buttonAddNote);
     }
 
-    private void showNotes(){
-        notesAdapter.setNotes(database.getNotes());
-    }
+
 }
